@@ -1,11 +1,30 @@
 
-  # Premium Health Simulation UI
+## Tech Stack
 
-  This is a code bundle for Premium Health Simulation UI. The original project is available at https://www.figma.com/design/jiF9IdoTzwTnrhW77CrMif/Premium-Health-Simulation-UI.
+- React
+- Vite
+- Tailwind CSS
+- Radix UI
+- pnpm (package manager)
 
-  ## Running the code
+## Setup Instructions
 
-  Run `npm i` to install the dependencies.
+### 1. Install pnpm (if not installed)
 
-  Run `npm run dev` to start the development server.
-  
+npm install -g pnpm
+
+### 2. Install dependencies
+
+pnpm install
+
+### 3. Run development server
+
+pnpm dev
+
+Then open:
+http://localhost:5173/
+
+## Notes
+
+- Do NOT use npm for this project (it may cause install errors)
+- Make sure you are not running inside OneDrive to avoid issues with native modules

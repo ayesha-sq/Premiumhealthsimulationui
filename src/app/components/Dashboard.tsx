@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router";
 import {
   LineChart,
@@ -6,303 +6,306 @@ import {
   XAxis,
   YAxis,
   CartesianGrid,
-  Tooltip,
   ResponsiveContainer,
-  Legend,
+  Tooltip,
 } from "recharts";
-import { Activity, TrendingUp, Lightbulb } from "lucide-react";
+import { Activity, ChevronRight, Menu, Sparkles, Clock3 } from "lucide-react";
 import { motion } from "motion/react";
+import { Button } from "./ui/button";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "./ui/card";
+import { Slider } from "./ui/slider";
 
-interface HabitSettings {
+type Habits = {
   sleep: number;
   exercise: number;
   stress: number;
   diet: number;
-}
+  sitting: number;
+};
+
+type Point = {
+  week: number;
+  current: number;
+  improved: number;
+};
+
+const weeks = [0, 4, 12, 26, 52];
+
+const habitConfig = [
+  { key: "sleep", label: "Sleep", min: 4, max: 10, step: 0.5, unit: "h" },
+  { key: "exercise", label: "Exercise", min: 0, max: 7, step: 1, unit: "days" },
+  { key: "stress", label: "Stress", min: 1, max: 10, step: 1, unit: "/10" },
+  { key: "diet", label: "Diet", min: 1, max: 10, step: 1, unit: "/10" },
+  { key: "sitting", label: "Sitting", min: 4, max: 14, step: 1, unit: "h" },
+] as const;
+
+const initialHabits: Habits = {
+  sleep: 6.5,
+  exercise: 2,
+  stress: 7,
+  diet: 5,
+  sitting: 10,
+};
+
+const clamp = (value: number, min: number, max: number) => Math.max(min, Math.min(max, value));
+
+const toScore = (habits: Habits) => {
+  const sleepScore = (habits.sleep - 4) / 6;
+  const exerciseScore = habits.exercise / 7;
+  const stressScore = 1 - (habits.stress - 1) / 9;
+  const dietScore = (habits.diet - 1) / 9;
+  const sittingScore = 1 - (habits.sitting - 4) / 10;
+
+  const raw = sleepScore * 0.28 + exerciseScore * 0.22 + stressScore * 0.22 + dietScore * 0.18 + sittingScore * 0.1;
+  return 42 + raw * 40;
+};
 
 export function Dashboard() {
   const navigate = useNavigate();
-  const [habits, setHabits] = useState<HabitSettings>({
-    sleep: 6,
-    exercise: 2,
-    stress: 7,
-    diet: 5,
-  });
+  const [habits, setHabits] = useState<Habits>(initialHabits);
 
   useEffect(() => {
-    const stored = localStorage.getItem("vitalsData");
+    const stored = window.localStorage.getItem("vitalsData");
     if (!stored) {
-      navigate("/");
+      navigate("/onboarding");
     }
   }, [navigate]);
 
-  const combinedData = useMemo(() => {
-    const generateChartData = (improved: boolean) => {
-      const data = [];
-      const currentAge = 30;
-      const sleepFactor = improved ? 8 : habits.sleep;
-      const exerciseFactor = improved ? 5 : habits.exercise;
-      const stressFactor = improved ? 3 : habits.stress;
-      const dietFactor = improved ? 8 : habits.diet;
+  const chartData = useMemo<Point[]>(() => {
+    const baseline = toScore(habits);
+    const improvementBonus = clamp(
+      (habits.sleep - 6) * 1.2 + habits.exercise * 1.4 + (10 - habits.stress) * 0.9 + habits.diet * 0.7 + (12 - habits.sitting) * 0.8,
+      0,
+      18,
+    );
 
-      const healthScore =
-        (sleepFactor / 8) * 25 +
-        (exerciseFactor / 7) * 25 +
-        ((10 - stressFactor) / 10) * 25 +
-        (dietFactor / 10) * 25;
+    return weeks.map((week, index) => {
+      const currentDrop = week * 0.23 + index * 0.5;
+      const improvedGain = week * 0.12 + improvementBonus * 0.28 + index * 0.3;
 
-      const declineRate = improved ? 0.3 : 1.2;
+      return {
+        week,
+        current: Math.round(clamp(baseline - currentDrop, 18, 100)),
+        improved: Math.round(clamp(baseline + improvedGain, 18, 100)),
+      };
+    });
+  }, [habits]);
 
-      for (let year = 0; year <= 50; year += 5) {
-        const age = currentAge + year;
-        const decline = year * declineRate;
-        const vitality = Math.max(20, healthScore - decline);
-        data.push({
-          age,
-          vitality: Math.round(vitality),
-        });
-      }
-
-      return data;
-    };
-
-    const currentData = generateChartData(false);
-    const improvedData = generateChartData(true);
-
-    return currentData.map((current, index) => ({
-      id: `age-${current.age}`,
-      age: current.age,
-      current: current.vitality,
-      improved: improvedData[index].vitality,
-    }));
-  }, [habits.sleep, habits.exercise, habits.stress, habits.diet]);
-
-  const yearsDifference = useMemo(() => {
-    const currentIndex = combinedData.findIndex((d) => d.current < 50);
-    const improvedIndex = combinedData.findIndex((d) => d.improved < 50);
-    return improvedIndex - currentIndex;
-  }, [combinedData]);
+  const gap = Math.max(0, chartData[chartData.length - 1].improved - chartData[chartData.length - 1].current);
 
   return (
-    <div className="min-h-screen bg-[#F6F8FB]">
-      {/* Topbar */}
-      <div className="bg-white/70 backdrop-blur-xl border-b border-white/20">
-        <div className="max-w-7xl mx-auto px-6 py-4 flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <Activity className="w-6 h-6 text-[#4F46E5]" />
-            <h1 className="text-xl font-bold bg-gradient-to-r from-[#4F46E5] to-[#06B6D4] bg-clip-text text-transparent">
-              VITALS
-            </h1>
-          </div>
-          <button
-            onClick={() => navigate("/insights")}
-            className="flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-[#4F46E5] to-[#06B6D4] text-white rounded-lg hover:shadow-lg transition-all duration-200"
-          >
-            <Lightbulb className="w-4 h-4" />
-            View Insights
-          </button>
-        </div>
-      </div>
-
-      <div className="flex">
-        {/* Sidebar */}
-        <div className="w-80 min-h-[calc(100vh-73px)] bg-white/50 backdrop-blur-xl border-r border-white/20 p-6">
-          <div className="space-y-6">
+    <div className="min-h-screen bg-[#F6F8FB] text-[#0F172A]">
+      <div className="flex min-h-screen flex-col">
+        <header className="flex h-16 items-center justify-between border-b border-white/80 bg-white/70 px-6 backdrop-blur-xl md:px-8">
+          <div className="flex items-center gap-3">
+            <div className="flex size-10 items-center justify-center rounded-2xl bg-gradient-to-br from-indigo-600 to-cyan-500 text-white shadow-lg shadow-cyan-200/40">
+              <Activity className="size-5" />
+            </div>
             <div>
-              <h3 className="text-sm font-semibold text-[#6B7280] mb-4">
-                ADJUST YOUR HABITS
-              </h3>
-              <div className="space-y-6">
-                {/* Sleep */}
-                <div>
-                  <div className="flex justify-between mb-2">
-                    <label className="text-sm text-[#0F172A]">Sleep</label>
-                    <span className="text-sm font-medium text-[#4F46E5]">
-                      {habits.sleep}h/night
-                    </span>
-                  </div>
-                  <input
-                    type="range"
-                    min="4"
-                    max="10"
-                    step="0.5"
-                    value={habits.sleep}
-                    onChange={(e) =>
-                      setHabits({ ...habits, sleep: parseFloat(e.target.value) })
-                    }
-                    className="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:w-4 [&::-webkit-slider-thumb]:h-4 [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-[#4F46E5]"
-                  />
-                </div>
-
-                {/* Exercise */}
-                <div>
-                  <div className="flex justify-between mb-2">
-                    <label className="text-sm text-[#0F172A]">Exercise</label>
-                    <span className="text-sm font-medium text-[#4F46E5]">
-                      {habits.exercise} days/week
-                    </span>
-                  </div>
-                  <input
-                    type="range"
-                    min="0"
-                    max="7"
-                    step="1"
-                    value={habits.exercise}
-                    onChange={(e) =>
-                      setHabits({ ...habits, exercise: parseInt(e.target.value) })
-                    }
-                    className="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:w-4 [&::-webkit-slider-thumb]:h-4 [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-[#4F46E5]"
-                  />
-                </div>
-
-                {/* Stress */}
-                <div>
-                  <div className="flex justify-between mb-2">
-                    <label className="text-sm text-[#0F172A]">Stress Level</label>
-                    <span className="text-sm font-medium text-[#F43F5E]">
-                      {habits.stress}/10
-                    </span>
-                  </div>
-                  <input
-                    type="range"
-                    min="1"
-                    max="10"
-                    step="1"
-                    value={habits.stress}
-                    onChange={(e) =>
-                      setHabits({ ...habits, stress: parseInt(e.target.value) })
-                    }
-                    className="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:w-4 [&::-webkit-slider-thumb]:h-4 [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-[#F43F5E]"
-                  />
-                </div>
-
-                {/* Diet */}
-                <div>
-                  <div className="flex justify-between mb-2">
-                    <label className="text-sm text-[#0F172A]">Diet Quality</label>
-                    <span className="text-sm font-medium text-[#4F46E5]">
-                      {habits.diet}/10
-                    </span>
-                  </div>
-                  <input
-                    type="range"
-                    min="1"
-                    max="10"
-                    step="1"
-                    value={habits.diet}
-                    onChange={(e) =>
-                      setHabits({ ...habits, diet: parseInt(e.target.value) })
-                    }
-                    className="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:w-4 [&::-webkit-slider-thumb]:h-4 [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-[#4F46E5]"
-                  />
-                </div>
-              </div>
+              <p className="text-sm font-semibold uppercase tracking-[0.22em] text-[#6B7280]">VITALS</p>
+              <p className="text-sm text-[#6B7280]">Trajectory dashboard</p>
             </div>
+          </div>
 
-            {/* Impact Card */}
-            <motion.div
-              key={yearsDifference}
-              initial={{ scale: 0.95, opacity: 0 }}
-              animate={{ scale: 1, opacity: 1 }}
-              className="bg-gradient-to-br from-[#4F46E5] to-[#06B6D4] rounded-2xl p-6 text-white"
+          <div className="flex items-center gap-3">
+            <Button
+              variant="ghost"
+              className="hidden rounded-full px-4 text-[#0F172A] hover:bg-slate-100 sm:inline-flex"
+              onClick={() => navigate("/insights")}
             >
-              <TrendingUp className="w-8 h-8 mb-3" />
-              <h3 className="font-semibold mb-1">Potential Impact</h3>
-              <p className="text-sm opacity-90">
-                Improving your habits could add{" "}
-                <span className="font-bold text-lg">{Math.max(0, yearsDifference * 5)}</span>{" "}
-                healthy years to your life
-              </p>
-            </motion.div>
+              Insights
+              <ChevronRight className="size-4" />
+            </Button>
+            <Button
+              className="rounded-full bg-gradient-to-r from-indigo-600 to-cyan-500 px-4 text-white shadow-lg shadow-cyan-200/40 transition-transform duration-200 hover:-translate-y-0.5"
+              onClick={() => navigate("/")}
+            >
+              Home
+            </Button>
           </div>
-        </div>
+        </header>
 
-        {/* Main Content */}
-        <div className="flex-1 p-8">
-          <div className="max-w-5xl mx-auto">
-            <div className="mb-6">
-              <h2 className="text-3xl font-bold text-[#0F172A] mb-2">
-                Your Health Trajectory
-              </h2>
-              <p className="text-[#6B7280]">
-                See how your choices shape your future vitality
-              </p>
-            </div>
+        <div className="grid flex-1 lg:grid-cols-[280px_1fr]">
+          <aside className="border-b border-white/80 bg-white/70 p-6 backdrop-blur-xl lg:border-b-0 lg:border-r">
+            <div className="space-y-4">
+              <Card className="border-white/80 bg-white/90 shadow-sm">
+                <CardContent className="p-5">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <p className="text-sm text-[#6B7280]">Improvement gap</p>
+                      <p className="mt-1 text-3xl font-semibold">+{gap}</p>
+                    </div>
+                    <div className="rounded-full bg-cyan-50 px-3 py-1 text-sm font-medium text-cyan-700">
+                      Week 52
+                    </div>
+                  </div>
+                  <p className="mt-3 text-sm leading-6 text-[#6B7280]">
+                    The chart updates instantly when the sliders move.
+                  </p>
+                </CardContent>
+              </Card>
 
-            {/* Chart Card */}
-            <div className="bg-white/70 backdrop-blur-xl rounded-3xl shadow-lg p-8 border border-white/20">
-              <div className="h-[500px]">
-                <ResponsiveContainer width="100%" height="100%">
-                  <LineChart data={combinedData} id="vitality-chart">
-                    <CartesianGrid key="grid" strokeDasharray="3 3" stroke="#E5E7EB" />
-                    <XAxis
-                      key="x-axis"
-                      dataKey="age"
-                      stroke="#6B7280"
-                      label={{ value: "Age", position: "insideBottom", offset: -5 }}
-                    />
-                    <YAxis
-                      key="y-axis"
-                      stroke="#6B7280"
-                      label={{ value: "Vitality Score", angle: -90, position: "insideLeft" }}
-                    />
-                    <Tooltip
-                      key="tooltip"
-                      contentStyle={{
-                        backgroundColor: "rgba(255, 255, 255, 0.95)",
-                        backdropFilter: "blur(10px)",
-                        border: "1px solid rgba(255, 255, 255, 0.2)",
-                        borderRadius: "12px",
-                      }}
-                    />
-                    <Legend key="legend" />
-                    <Line
-                      key="current-line"
-                      type="monotone"
-                      dataKey="current"
-                      stroke="#F43F5E"
-                      strokeWidth={3}
-                      name="Current Path"
-                      dot={{ fill: "#F43F5E", r: 4 }}
-                      isAnimationActive={false}
-                    />
-                    <Line
-                      key="improved-line"
-                      type="monotone"
-                      dataKey="improved"
-                      stroke="#0EA5E9"
-                      strokeWidth={3}
-                      name="Improved Path"
-                      dot={{ fill: "#0EA5E9", r: 4 }}
-                      isAnimationActive={false}
-                    />
-                  </LineChart>
-                </ResponsiveContainer>
-              </div>
-            </div>
+              <Card className="border-white/80 bg-gradient-to-br from-indigo-600 to-cyan-500 text-white shadow-lg shadow-cyan-200/40">
+                <CardContent className="p-5">
+                  <div className="flex items-center gap-2 text-sm font-medium text-white/85">
+                    <Sparkles className="size-4" />
+                    Small adjustments matter
+                  </div>
+                  <p className="mt-3 text-sm leading-6 text-white/90">
+                    Try changing one habit at a time to see how the improved path pulls away.
+                  </p>
+                </CardContent>
+              </Card>
 
-            {/* Legend Cards */}
-            <div className="grid grid-cols-2 gap-4 mt-6">
-              <div className="bg-white/70 backdrop-blur-xl rounded-2xl p-6 border border-white/20">
-                <div className="flex items-center gap-3 mb-2">
-                  <div className="w-4 h-4 rounded-full bg-[#F43F5E]" />
-                  <h3 className="font-semibold text-[#0F172A]">Current Path</h3>
+              <div className="rounded-3xl border border-white/80 bg-white/80 p-5 shadow-sm">
+                <div className="flex items-center gap-2 text-sm font-semibold uppercase tracking-[0.2em] text-[#6B7280]">
+                  <Menu className="size-4" />
+                  Quick context
                 </div>
-                <p className="text-sm text-[#6B7280]">
-                  Based on your current lifestyle habits
-                </p>
-              </div>
-              <div className="bg-white/70 backdrop-blur-xl rounded-2xl p-6 border border-white/20">
-                <div className="flex items-center gap-3 mb-2">
-                  <div className="w-4 h-4 rounded-full bg-[#0EA5E9]" />
-                  <h3 className="font-semibold text-[#0F172A]">Improved Path</h3>
+                <div className="mt-4 space-y-3 text-sm text-[#6B7280]">
+                  <div className="flex items-center justify-between rounded-2xl bg-slate-50 px-4 py-3">
+                    <span>Current path</span>
+                    <span className="font-medium text-rose-500">#F43F5E</span>
+                  </div>
+                  <div className="flex items-center justify-between rounded-2xl bg-slate-50 px-4 py-3">
+                    <span>Improved path</span>
+                    <span className="font-medium text-cyan-600">#0EA5E9</span>
+                  </div>
+                  <div className="flex items-center justify-between rounded-2xl bg-slate-50 px-4 py-3">
+                    <span>Timeline</span>
+                    <span className="font-medium text-[#0F172A]">0, 4, 12, 26, 52 weeks</span>
+                  </div>
                 </div>
-                <p className="text-sm text-[#6B7280]">
-                  What's possible with optimized habits
-                </p>
               </div>
             </div>
-          </div>
+          </aside>
+
+          <main className="space-y-6 p-6 md:p-8">
+            <div className="grid gap-6 xl:grid-cols-[1.35fr_0.65fr]">
+              <Card className="border-white/80 bg-white/85 shadow-[0_24px_90px_rgba(15,23,42,0.08)] backdrop-blur-xl">
+                <CardHeader className="pb-0">
+                  <CardTitle className="text-2xl font-semibold">Your future trajectory</CardTitle>
+                  <CardDescription className="text-[#6B7280]">
+                    Current habits versus a realistic improved path.
+                  </CardDescription>
+                </CardHeader>
+                <CardContent className="pt-4">
+                  <div className="h-[420px] rounded-3xl border border-slate-100 bg-gradient-to-br from-slate-50 to-white p-4">
+                    <ResponsiveContainer width="100%" height="100%">
+                      <LineChart data={chartData} margin={{ top: 10, right: 16, bottom: 8, left: 0 }}>
+                        <CartesianGrid strokeDasharray="4 8" stroke="#E2E8F0" vertical={false} />
+                        <XAxis dataKey="week" tickLine={false} axisLine={false} stroke="#94A3B8" />
+                        <YAxis tickLine={false} axisLine={false} stroke="#94A3B8" domain={[20, 100]} />
+                        <Tooltip
+                          contentStyle={{
+                            borderRadius: 16,
+                            border: "1px solid #E2E8F0",
+                            background: "rgba(255,255,255,0.96)",
+                          }}
+                        />
+                        <Line type="monotone" dataKey="current" stroke="#F43F5E" strokeWidth={3} dot={{ r: 4 }} />
+                        <Line type="monotone" dataKey="improved" stroke="#0EA5E9" strokeWidth={3} dot={{ r: 4 }} />
+                      </LineChart>
+                    </ResponsiveContainer>
+                  </div>
+
+                  <div className="mt-4 grid gap-3 sm:grid-cols-2">
+                    <div className="rounded-2xl border border-rose-100 bg-rose-50/80 p-4">
+                      <div className="text-sm font-medium text-rose-500">Current path</div>
+                      <p className="mt-1 text-sm text-[#6B7280]">What happens if nothing changes.</p>
+                    </div>
+                    <div className="rounded-2xl border border-cyan-100 bg-cyan-50/80 p-4">
+                      <div className="text-sm font-medium text-cyan-600">Improved path</div>
+                      <p className="mt-1 text-sm text-[#6B7280]">What happens if habits improve.
+                      </p>
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+
+              <Card className="border-white/80 bg-white/85 shadow-[0_24px_90px_rgba(15,23,42,0.08)] backdrop-blur-xl">
+                <CardHeader className="pb-4">
+                  <CardTitle className="text-2xl font-semibold">Divergence snapshot</CardTitle>
+                  <CardDescription className="text-[#6B7280]">Fast readout based on the current slider state.</CardDescription>
+                </CardHeader>
+                <CardContent className="space-y-4">
+                  {[
+                    { label: "Gap at week 52", value: `+${gap}` },
+                    { label: "Current score", value: `${chartData[chartData.length - 1].current}` },
+                    { label: "Improved score", value: `${chartData[chartData.length - 1].improved}` },
+                  ].map((item) => (
+                    <div key={item.label} className="flex items-center justify-between rounded-2xl bg-slate-50 px-4 py-4">
+                      <span className="text-sm text-[#6B7280]">{item.label}</span>
+                      <span className="text-lg font-semibold text-[#0F172A]">{item.value}</span>
+                    </div>
+                  ))}
+
+                  <div className="rounded-2xl border border-slate-100 bg-slate-50/80 p-4 text-sm leading-6 text-[#6B7280]">
+                    Move to the plan view for concise next steps, or keep tuning the habits below.
+                  </div>
+                </CardContent>
+              </Card>
+            </div>
+
+            <Card className="border-white/80 bg-white/85 shadow-[0_24px_90px_rgba(15,23,42,0.08)] backdrop-blur-xl">
+              <CardHeader>
+                <CardTitle className="text-2xl font-semibold">Adjust habits</CardTitle>
+                <CardDescription className="text-[#6B7280]">Five sliders drive the chart in real time.</CardDescription>
+              </CardHeader>
+              <CardContent className="grid gap-6 lg:grid-cols-2">
+                {habitConfig.map((item) => {
+                  const value = habits[item.key];
+
+                  return (
+                    <motion.div
+                      key={item.key}
+                      whileHover={{ y: -2 }}
+                      transition={{ duration: 0.2 }}
+                      className="rounded-3xl border border-slate-100 bg-slate-50/80 p-4"
+                    >
+                      <div className="mb-4 flex items-center justify-between gap-4">
+                        <div>
+                          <div className="text-sm font-medium text-[#6B7280]">{item.label}</div>
+                          <div className="mt-1 text-xl font-semibold text-[#0F172A]">
+                            {value} {item.unit}
+                          </div>
+                        </div>
+                        <Clock3 className="size-5 text-[#94A3B8]" />
+                      </div>
+
+                      <Slider
+                        value={[value]}
+                        min={item.min}
+                        max={item.max}
+                        step={item.step}
+                        onValueChange={(nextValues: number[]) =>
+                          setHabits((current) => ({
+                            ...current,
+                            [item.key]: nextValues[0],
+                          }))
+                        }
+                        className="py-2"
+                      />
+                      <div className="mt-3 flex items-center justify-between text-xs text-[#94A3B8]">
+                        <span>{item.min}</span>
+                        <span>{item.max}</span>
+                      </div>
+                    </motion.div>
+                  );
+                })}
+              </CardContent>
+            </Card>
+
+            <div className="flex justify-end pb-2">
+              <Button
+                className="rounded-full bg-gradient-to-r from-indigo-600 to-cyan-500 px-6 text-white shadow-lg shadow-cyan-200/40 transition-transform duration-200 hover:-translate-y-0.5"
+                onClick={() => navigate("/insights")}
+              >
+                View insights
+                <ChevronRight className="size-4" />
+              </Button>
+            </div>
+          </main>
         </div>
       </div>
     </div>

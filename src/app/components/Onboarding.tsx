@@ -1,235 +1,318 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { useNavigate } from "react-router";
-import { motion, AnimatePresence } from "motion/react";
-import { ArrowRight, Activity } from "lucide-react";
+import { AnimatePresence, motion } from "motion/react";
+import { ArrowRight, ArrowLeft, Activity, CheckCircle2 } from "lucide-react";
+import { Button } from "./ui/button";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "./ui/card";
+import { Input } from "./ui/input";
+import { Slider } from "./ui/slider";
 
-interface OnboardingData {
-  age: string;
-  sex: string;
-  height: string;
-  weight: string;
-  health: string;
-  sleep: string;
-  consistency: string;
-  stress: string;
-  activity: string;
-  sitting: string;
-  diet: string;
-}
+type AnswerValue = string | number;
+type Answers = Record<string, AnswerValue>;
 
-const questions = [
+type Question =
+  | {
+      id: string;
+      title: string;
+      description: string;
+      type: "number";
+      placeholder: string;
+      min?: number;
+      max?: number;
+    }
+  | {
+      id: string;
+      title: string;
+      description: string;
+      type: "slider";
+      min: number;
+      max: number;
+      step: number;
+      unit: string;
+    }
+  | {
+      id: string;
+      title: string;
+      description: string;
+      type: "options";
+      options: string[];
+    };
+
+const questions: Question[] = [
   {
     id: "age",
-    title: "What's your age?",
+    title: "What is your age?",
+    description: "We use this to set your baseline.",
     type: "number",
-    placeholder: "Enter your age",
-  },
-  {
-    id: "sex",
-    title: "What's your biological sex?",
-    type: "select",
-    options: ["Male", "Female"],
-  },
-  {
-    id: "height",
-    title: "What's your height?",
-    type: "text",
-    placeholder: "e.g., 5'10\" or 178cm",
-  },
-  {
-    id: "weight",
-    title: "What's your weight?",
-    type: "text",
-    placeholder: "e.g., 165 lbs or 75 kg",
-  },
-  {
-    id: "health",
-    title: "How would you rate your overall health?",
-    type: "select",
-    options: ["Excellent", "Good", "Fair", "Poor"],
+    placeholder: "Enter age",
+    min: 18,
+    max: 80,
   },
   {
     id: "sleep",
-    title: "How many hours do you sleep per night?",
-    type: "number",
-    placeholder: "Average hours",
+    title: "How many hours do you sleep?",
+    description: "Quality sleep is one of the strongest signals.",
+    type: "slider",
+    min: 4,
+    max: 10,
+    step: 0.5,
+    unit: "hours",
   },
   {
-    id: "consistency",
-    title: "How consistent are your sleep and meal times?",
-    type: "select",
-    options: ["Very consistent", "Somewhat consistent", "Inconsistent"],
+    id: "exercise",
+    title: "How many days do you exercise each week?",
+    description: "A small increase here can move the whole curve.",
+    type: "slider",
+    min: 0,
+    max: 7,
+    step: 1,
+    unit: "days",
   },
   {
     id: "stress",
-    title: "How would you rate your stress levels?",
-    type: "select",
-    options: ["Low", "Moderate", "High", "Very high"],
-  },
-  {
-    id: "activity",
-    title: "How many days per week do you exercise?",
-    type: "number",
-    placeholder: "Days per week",
-  },
-  {
-    id: "sitting",
-    title: "How many hours do you sit per day?",
-    type: "number",
-    placeholder: "Average hours",
+    title: "What is your stress level?",
+    description: "Lower stress often improves the fastest.",
+    type: "slider",
+    min: 1,
+    max: 10,
+    step: 1,
+    unit: "/10",
   },
   {
     id: "diet",
     title: "How would you describe your diet?",
-    type: "select",
+    description: "Pick the closest match.",
+    type: "options",
     options: ["Very healthy", "Mostly healthy", "Mixed", "Mostly unhealthy"],
+  },
+  {
+    id: "sitting",
+    title: "How many hours do you sit each day?",
+    description: "Long sitting stretches weigh on the forecast.",
+    type: "slider",
+    min: 4,
+    max: 14,
+    step: 1,
+    unit: "hours",
+  },
+  {
+    id: "consistency",
+    title: "How consistent are your habits?",
+    description: "Consistency changes the uncertainty band.",
+    type: "options",
+    options: ["Very consistent", "Mostly consistent", "Inconsistent"],
+  },
+  {
+    id: "goal",
+    title: "What would you most like to improve?",
+    description: "This helps shape the plan you see later.",
+    type: "options",
+    options: ["Energy", "Stress", "Fitness", "Sleep"],
+  },
+  {
+    id: "confidence",
+    title: "How confident are you in this snapshot?",
+    description: "A simple self-rating keeps the flow quick.",
+    type: "options",
+    options: ["Low", "Moderate", "High"],
+  },
+  {
+    id: "readiness",
+    title: "Are you ready to see your twin?",
+    description: "That’s the last step before the dashboard.",
+    type: "options",
+    options: ["Yes, show me", "Not yet"],
   },
 ];
 
+const initialAnswers = questions.reduce<Answers>((accumulator, question) => {
+  if (question.type === "slider") {
+    accumulator[question.id] = question.min;
+  }
+
+  return accumulator;
+}, {});
+
 export function Onboarding() {
-  const [step, setStep] = useState(0);
-  const [direction, setDirection] = useState(1);
-  const [data, setData] = useState<OnboardingData>({
-    age: "",
-    sex: "",
-    height: "",
-    weight: "",
-    health: "",
-    sleep: "",
-    consistency: "",
-    stress: "",
-    activity: "",
-    sitting: "",
-    diet: "",
-  });
   const navigate = useNavigate();
+  const [currentStep, setCurrentStep] = useState(0);
+  const [direction, setDirection] = useState<1 | -1>(1);
+  const [answers, setAnswers] = useState<Answers>(initialAnswers);
 
-  const currentQuestion = questions[step];
-  const progress = ((step + 1) / questions.length) * 100;
+  const question = questions[currentStep];
+  const progress = useMemo(() => ((currentStep + 1) / questions.length) * 100, [currentStep]);
+  const currentAnswer = answers[question.id];
 
-  const handleNext = () => {
-    if (step < questions.length - 1) {
+  const canContinue =
+    currentAnswer !== undefined && currentAnswer !== "" && !(question.id === "readiness" && currentAnswer === "Not yet");
+
+  const updateAnswer = (value: AnswerValue) => {
+    setAnswers((current) => ({ ...current, [question.id]: value }));
+  };
+
+  const goNext = () => {
+    if (currentStep < questions.length - 1) {
       setDirection(1);
-      setStep(step + 1);
-    } else {
-      localStorage.setItem("vitalsData", JSON.stringify(data));
-      navigate("/dashboard");
+      setCurrentStep((step) => step + 1);
+      return;
     }
+
+    window.localStorage.setItem("vitalsData", JSON.stringify(answers));
+    navigate("/dashboard");
   };
 
-  const handleBack = () => {
-    if (step > 0) {
-      setDirection(-1);
-      setStep(step - 1);
+  const goBack = () => {
+    if (currentStep === 0) {
+      return;
     }
-  };
 
-  const updateData = (value: string) => {
-    setData({ ...data, [currentQuestion.id]: value });
+    setDirection(-1);
+    setCurrentStep((step) => step - 1);
   };
-
-  const isValid = data[currentQuestion.id as keyof OnboardingData] !== "";
 
   return (
-    <div className="min-h-screen bg-[#F6F8FB] flex items-center justify-center p-6">
-      <div className="w-full max-w-2xl">
-        {/* Logo */}
-        <motion.div
-          initial={{ opacity: 0, y: -20 }}
-          animate={{ opacity: 1, y: 0 }}
-          className="text-center mb-12"
-        >
-          <div className="flex items-center justify-center gap-2 mb-2">
-            <Activity className="w-8 h-8 text-[#4F46E5]" />
-            <h1 className="text-3xl font-bold bg-gradient-to-r from-[#4F46E5] to-[#06B6D4] bg-clip-text text-transparent">
-              VITALS
-            </h1>
-          </div>
-          <p className="text-[#6B7280]">Two futures. One decision.</p>
-        </motion.div>
-
-        {/* Progress Bar */}
-        <div className="mb-8">
-          <div className="h-1 bg-white/50 rounded-full overflow-hidden backdrop-blur-sm">
-            <motion.div
-              className="h-full bg-gradient-to-r from-[#4F46E5] to-[#06B6D4]"
-              initial={{ width: 0 }}
-              animate={{ width: `${progress}%` }}
-              transition={{ duration: 0.3 }}
-            />
-          </div>
-          <p className="text-sm text-[#6B7280] mt-2 text-center">
-            Step {step + 1} of {questions.length}
-          </p>
-        </div>
-
-        {/* Question Card */}
-        <motion.div
-          initial={{ opacity: 0, scale: 0.95 }}
-          animate={{ opacity: 1, scale: 1 }}
-          className="bg-white/70 backdrop-blur-xl rounded-3xl shadow-lg p-8 border border-white/20"
-        >
-          <AnimatePresence mode="wait" custom={direction}>
-            <motion.div
-              key={step}
-              custom={direction}
-              initial={{ opacity: 0, x: direction * 100 }}
-              animate={{ opacity: 1, x: 0 }}
-              exit={{ opacity: 0, x: direction * -100 }}
-              transition={{ duration: 0.3 }}
-            >
-              <h2 className="text-2xl font-semibold text-[#0F172A] mb-6">
-                {currentQuestion.title}
-              </h2>
-
-              {currentQuestion.type === "number" || currentQuestion.type === "text" ? (
-                <input
-                  type={currentQuestion.type}
-                  value={data[currentQuestion.id as keyof OnboardingData]}
-                  onChange={(e) => updateData(e.target.value)}
-                  placeholder={currentQuestion.placeholder}
-                  className="w-full px-4 py-4 text-lg bg-white/80 backdrop-blur-sm border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-[#4F46E5] focus:border-transparent transition-all"
-                  autoFocus
-                />
-              ) : (
-                <div className="grid gap-3">
-                  {currentQuestion.options?.map((option) => (
-                    <button
-                      key={option}
-                      onClick={() => updateData(option)}
-                      className={`p-4 text-left rounded-xl border-2 transition-all duration-200 ${
-                        data[currentQuestion.id as keyof OnboardingData] === option
-                          ? "border-[#4F46E5] bg-[#4F46E5]/5"
-                          : "border-gray-200 bg-white/80 hover:border-[#4F46E5]/50"
-                      }`}
-                    >
-                      <span className="text-[#0F172A]">{option}</span>
-                    </button>
-                  ))}
+    <div className="min-h-screen bg-[#F6F8FB] px-6 py-8 text-[#0F172A]">
+      <div className="mx-auto flex min-h-[calc(100vh-4rem)] w-full max-w-4xl items-center justify-center">
+        <Card className="w-full border-white/80 bg-white/85 shadow-[0_24px_90px_rgba(15,23,42,0.08)] backdrop-blur-xl">
+          <CardHeader className="space-y-4 border-b border-slate-100 pb-6">
+            <div className="flex items-center justify-between gap-4">
+              <div className="flex items-center gap-3">
+                <div className="flex size-12 items-center justify-center rounded-2xl bg-gradient-to-br from-indigo-600 to-cyan-500 text-white shadow-lg shadow-cyan-200/40">
+                  <Activity className="size-5" />
                 </div>
-              )}
-            </motion.div>
-          </AnimatePresence>
+                <div>
+                  <CardTitle className="text-2xl font-semibold">VITALS onboarding</CardTitle>
+                  <CardDescription className="mt-1 text-[#6B7280]">
+                    One question at a time. Ten quick steps.
+                  </CardDescription>
+                </div>
+              </div>
+              <div className="rounded-full bg-cyan-50 px-3 py-1 text-sm font-medium text-cyan-700">
+                Step {currentStep + 1} of {questions.length}
+              </div>
+            </div>
 
-          {/* Navigation */}
-          <div className="flex items-center justify-between mt-8 gap-4">
-            <button
-              onClick={handleBack}
-              disabled={step === 0}
-              className="px-6 py-3 text-[#6B7280] hover:text-[#0F172A] disabled:opacity-0 transition-all"
-            >
-              Back
-            </button>
-            <button
-              onClick={handleNext}
-              disabled={!isValid}
-              className="px-8 py-3 bg-gradient-to-r from-[#4F46E5] to-[#06B6D4] text-white rounded-xl font-medium hover:shadow-lg hover:scale-105 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:scale-100 transition-all duration-200 flex items-center gap-2"
-            >
-              {step === questions.length - 1 ? "See My Future" : "Next"}
-              <ArrowRight className="w-5 h-5" />
-            </button>
-          </div>
-        </motion.div>
+            <div className="space-y-2">
+              <div className="h-2 overflow-hidden rounded-full bg-slate-100">
+                <motion.div
+                  className="h-full rounded-full bg-gradient-to-r from-indigo-600 to-cyan-500"
+                  initial={{ width: 0 }}
+                  animate={{ width: `${progress}%` }}
+                  transition={{ duration: 0.25 }}
+                />
+              </div>
+              <p className="text-sm text-[#6B7280]">Your answers stay on this page until you finish.</p>
+            </div>
+          </CardHeader>
+
+          <CardContent className="space-y-8 p-6 md:p-8">
+            <AnimatePresence mode="wait" initial={false} custom={direction}>
+              <motion.div
+                key={question.id}
+                custom={direction}
+                initial={{ opacity: 0, x: direction > 0 ? 18 : -18 }}
+                animate={{ opacity: 1, x: 0 }}
+                exit={{ opacity: 0, x: direction > 0 ? -18 : 18 }}
+                transition={{ duration: 0.22 }}
+                className="space-y-6"
+              >
+                <div className="space-y-2">
+                  <h2 className="text-3xl font-semibold tracking-tight">{question.title}</h2>
+                  <p className="text-[#6B7280]">{question.description}</p>
+                </div>
+
+                {question.type === "number" ? (
+                  <Input
+                    type="number"
+                    min={question.min}
+                    max={question.max}
+                    value={typeof currentAnswer === "number" ? currentAnswer : ""}
+                    onChange={(event) => updateAnswer(event.target.value === "" ? "" : Number(event.target.value))}
+                    placeholder={question.placeholder}
+                    className="h-14 rounded-2xl border-slate-200 bg-white text-base shadow-sm focus-visible:border-cyan-300 focus-visible:ring-cyan-200"
+                  />
+                ) : null}
+
+                {question.type === "slider" ? (
+                  <div className="space-y-5 rounded-3xl border border-slate-100 bg-slate-50/80 p-5">
+                    <div className="flex items-end justify-between gap-4">
+                      <div>
+                        <p className="text-sm font-medium text-[#6B7280]">Current value</p>
+                        <p className="mt-1 text-2xl font-semibold text-[#0F172A]">
+                          {currentAnswer} {question.unit}
+                        </p>
+                      </div>
+                      <div className="rounded-full bg-white px-3 py-1 text-sm font-medium text-[#6B7280] shadow-sm">
+                        Drag to adjust
+                      </div>
+                    </div>
+                    <Slider
+                      value={[Number(currentAnswer)]}
+                      min={question.min}
+                      max={question.max}
+                      step={question.step}
+                      onValueChange={([value]) => updateAnswer(value)}
+                      className="py-2"
+                    />
+                    <div className="flex justify-between text-sm text-[#6B7280]">
+                      <span>{question.min}</span>
+                      <span>{question.max}</span>
+                    </div>
+                  </div>
+                ) : null}
+
+                {question.type === "options" ? (
+                  <div className="grid gap-3 sm:grid-cols-2">
+                    {question.options.map((option) => {
+                      const selected = currentAnswer === option;
+
+                      return (
+                        <button
+                          key={option}
+                          type="button"
+                          onClick={() => updateAnswer(option)}
+                          className={`rounded-2xl border p-4 text-left transition-all duration-200 hover:-translate-y-0.5 hover:shadow-md ${
+                            selected
+                              ? "border-cyan-300 bg-cyan-50 text-cyan-900 shadow-sm"
+                              : "border-slate-200 bg-white text-[#0F172A]"
+                          }`}
+                        >
+                          <div className="flex items-center justify-between gap-4">
+                            <span className="text-sm font-medium">{option}</span>
+                            {selected ? <CheckCircle2 className="size-4 text-cyan-600" /> : null}
+                          </div>
+                        </button>
+                      );
+                    })}
+                  </div>
+                ) : null}
+              </motion.div>
+            </AnimatePresence>
+
+            <div className="flex items-center justify-between gap-3 border-t border-slate-100 pt-6">
+              <Button
+                type="button"
+                variant="ghost"
+                onClick={goBack}
+                disabled={currentStep === 0}
+                className="rounded-full px-5 text-[#6B7280] transition-all duration-200 hover:bg-slate-100 hover:text-[#0F172A]"
+              >
+                <ArrowLeft className="size-4" />
+                Back
+              </Button>
+
+              <Button
+                type="button"
+                onClick={goNext}
+                disabled={!canContinue}
+                className="rounded-full bg-gradient-to-r from-indigo-600 to-cyan-500 px-6 text-white shadow-lg shadow-cyan-200/50 transition-transform duration-200 hover:-translate-y-0.5 disabled:translate-y-0 disabled:opacity-50"
+              >
+                {currentStep === questions.length - 1 ? "See dashboard" : "Next"}
+                <ArrowRight className="size-4" />
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
       </div>
     </div>
   );
